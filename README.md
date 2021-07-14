@@ -3,7 +3,7 @@ Setup camptonhillsweather.net in a kubernetes cluster as deployment named chwnet
 
 Source image [InstallCHW.net](https://github.com/jkozik/InstallCHW.net)
 
-# build image, put on docker hub
+# Build image, put on docker hub
 CamptonHillsWeather.net is running in a docker container on my host, directly -- not in a VM.  To make it run in my kubernetes cluster, I need to push the image to my dockerhub repository.  The kubernetes deployment resource has an "image" field that triggers a pull from dockerhub.
 ```
 docker login
@@ -20,7 +20,7 @@ Verify that the PV/PVC setup by chwcom exists and is bound.
 persistentvolume/chwcom-persistent-storage      1Gi        ROX            Retain           Bound    default/chwcom-persistent-storage      nfs                     17h
 persistentvolumeclaim/chwcom-persistent-storage      Bound    chwcom-persistent-storage      1Gi        ROX            nfs            17h
 ```
-# clone github repository, apply yaml files
+# Clone github repository, apply yaml files
 
 Get the yaml manifest files and apply them.  Verify that the pod, deployment, service and ingress are successfully running.
 ```
@@ -41,7 +41,7 @@ deployment.apps/chwnet created
 ingress.networking.k8s.io/chwnet-ingress created
 service/chwnet created
 ```
-# Verify that resources running and logs
+# Verify that pod, service, deployment and ingress resources running
 ```
 [jkozik@dell2 k8sChw.net]$ kubectl get pods,service,deployment,ingress | grep chwnet
 pod/chwnet-6cc668bd7f-whb84                1/1     Running   0          116s
