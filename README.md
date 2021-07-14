@@ -10,6 +10,7 @@ docker login
 docker tag jkozik/chw.net jkozik/chw.net:v1
 docker push jkozik/chw.net:v1
 ```
+# Verify storage PV/PVCs
 Next, the website displays weather data derived from realtime data uploaded to an NFS share on my host.  This share is configured into a persistent volume and persistent volume claim called chwcom-persistent storage.  This was setup as part of the [k8sChw.com](https://github.com/jkozik/k8sChw.com) application.  This application uses the same realtime input, but this repository does not re-create the PV/PVC -- it reuses them.  
 
 Verify that the PV/PVC setup by chwcom exists and is bound.
@@ -19,6 +20,8 @@ Verify that the PV/PVC setup by chwcom exists and is bound.
 persistentvolume/chwcom-persistent-storage      1Gi        ROX            Retain           Bound    default/chwcom-persistent-storage      nfs                     17h
 persistentvolumeclaim/chwcom-persistent-storage      Bound    chwcom-persistent-storage      1Gi        ROX            nfs            17h
 ```
+# clone github repository, apply yaml files
+
 Get the yaml manifest files and apply them.  Verify that the pod, deployment, service and ingress are successfully running.
 ```
 [jkozik@dell2 ~]$ git clone https://github.com/jkozik/k8sChw.net
@@ -37,6 +40,14 @@ chwnet-deploy.yml  chwnet-ingress.yml  chwnet-svc.yml  README.md
 deployment.apps/chwnet created
 ingress.networking.k8s.io/chwnet-ingress created
 service/chwnet created
+```
+# Verify that resources running and logs
+```
+[jkozik@dell2 k8sChw.net]$ kubectl get pods,service,deployment,ingress | grep chwnet
+pod/chwnet-6cc668bd7f-whb84                1/1     Running   0          116s
+service/chwnet            NodePort    10.106.47.241    <none>        80:32070/TCP   115s
+deployment.apps/chwnet                1/1     1            1           116s
+ingress.networking.k8s.io/chwnet-ingress            <none>   camptonhillsweather.net   192.168.100.174   80      116s
 
 [jkozik@dell2 k8sChw.net]$ kubectl logs pod/chwnet-6cc668bd7f-whb84
 AH00558: apache2: Could not reliably determine the server's fully qualified domain name, using 10.68.77.148. Set the 'ServerName' directive globally to suppress this message
@@ -50,6 +61,7 @@ AH00558: apache2: Could not reliably determine the server's fully qualified doma
 10.68.77.136 - - [14/Jul/2021:13:34:11 +0000] "GET /weather34uvsolar.php?_=1626212812261 HTTP/1.1" 200 1761 "http://camptonhillsweather.net/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 10.68.77.136 - - [14/Jul/2021:13:34:11 +0000] "GET /moonphase.php?_=1626212812262 HTTP/1.1" 200 1183 "http://camptonhillsweather.net/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 ```
+# Verify http://camptonhillsweather.net
 Based on the log file, the application is already responding to http GET requests.  Either way, it is useful to verify that camptonhillsweather.net works from a CLI and a browser.
 ```
 [jkozik@dell2 k8sChw.net]$ curl camptonhillsweather.net | head
