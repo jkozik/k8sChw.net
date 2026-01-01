@@ -81,3 +81,9 @@ Based on the log file, the application is already responding to http GET request
 ```
 
 
+## Ingress --> HttpRoute
+I have installed the Gateway API on this cluster.  It is called ` Gateway running in `envoy-gateway-system` namespace.
+
+The HTTPRoute yaml points camptonhillsweather.net and www.camptonhillsweather.net from my Cloudflare tunnel to port 30458.
+
+Ingress has been depricated.
