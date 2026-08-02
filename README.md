@@ -1,89 +1,103 @@
 # k8sChw.net
-Setup camptonhillsweather.net in a kubernetes cluster as deployment named chwnet; expose as service chwnet; connect to the internet as camptonhillsweather.net through an ingress called chwnet-ingress. Get realtime weather data from an NFS mount on my local host through the PV/PVC named chwcom-persistent-storage -- note, this is the same PV/PVC used by [k8sChw.com](https://github.com/jkozik/k8sChw.com). 
+
+Setup camptonhillsweather.net in a Kubernetes cluster as deployment named chwnet; expose as
+service chwnet; connect to the internet as camptonhillsweather.net through an HTTPRoute
+pointing to the Envoy Gateway. Reuses the same NFS PV/PVC (`chwcom-persistent-storage`) as
+[k8sChw.com](https://github.com/jkozik/k8sChw.com) — different rendering software, same
+weather station data.
 
 Source image [InstallCHW.net](https://github.com/jkozik/InstallCHW.net)
 
-# Build image, put on docker hub
-CamptonHillsWeather.net is running in a docker container on my host, directly -- not in a VM.  To make it run in my kubernetes cluster, I need to push the image to my dockerhub repository.  The kubernetes deployment resource has an "image" field that triggers a pull from dockerhub.
+## Directory structure
+
 ```
+k8sChw.net/
+├── chwnet-deploy.yml      # Deployment (1 replica, jkozik/chw.net:v1)
+├── chwnet-svc.yml         # NodePort service
+├── chwnet-httproute.yaml  # HTTPRoute — camptonhillsweather.net via Envoy Gateway port 30458
+├── README.md              # This file
+└── old/
+    └── chwnet-ingress.yml # Retired nginx Ingress (kept for reference)
+```
+
+## Prerequisites
+
+- Envoy Gateway running with `weather-gateway` on NodePort 30458
+- PV/PVC `chwcom-persistent-storage` already bound (created by k8sChw.com deploy)
+- `nfs-common` installed on all cluster nodes
+
+Verify PVC exists and is bound before applying this repo:
+```bash
+kubectl get pv,pvc | grep chwcom
+# Expected: chwcom-persistent-storage   Bound
+```
+
+## Deploy
+
+No PV/PVC step — this app reuses `chwcom-persistent-storage` from k8sChw.com.
+
+```bash
+cd ~/projects/k8sChw.net
+
+# 1. Application
+kubectl apply -f chwnet-svc.yml
+kubectl apply -f chwnet-deploy.yml
+
+# 2. Routing
+kubectl apply -f chwnet-httproute.yaml
+```
+
+## Verify
+
+```bash
+kubectl get deployment,service,pod,httproute -l app=chwnet
+
+# Expected:
+# deployment.apps/chwnet   1/1
+# service/chwnet           NodePort  80:<nodeport>/TCP
+# pod/chwnet-<hash>        1/1 Running
+# httproute/chwnet-route   camptonhillsweather.net, www.camptonhillsweather.net
+```
+
+Test via NodePort directly:
+```bash
+curl http://<node-ip>:<nodeport>/ | head -5
+```
+
+Test via Envoy Gateway (matches production path):
+```bash
+curl -H "Host: camptonhillsweather.net" http://<node-ip>:30458/ | head -5
+# Should return Campton Hills weather HTML
+```
+
+## Cloudflare tunnel
+
+Point the `camptonhillsweather.net` and `www.camptonhillsweather.net` public hostnames in
+the Cloudflare Zero Trust tunnel to:
+```
+http://<node-ip>:30458
+```
+
+## NFS share (reference)
+
+The NFS export is on 192.168.100.153 (dell3) and is configured via the `chwcom-persistent-storage`
+PV in the k8sChw.com repo:
+```
+/home/nfs/weather-stations/chwcom/public_html  192.168.100.0/24(ro,sync,no_root_squash)
+```
+
+Mounted read-only at `/var/www/html/mount` inside the container.
+
+## Build image / push to Docker Hub
+
+```bash
 docker login
 docker tag jkozik/chw.net jkozik/chw.net:v1
 docker push jkozik/chw.net:v1
 ```
-# Verify storage PV/PVCs
-Next, the website displays weather data derived from realtime data uploaded to an NFS share on my host.  This share is configured into a persistent volume and persistent volume claim called chwcom-persistent storage.  This was setup as part of the [k8sChw.com](https://github.com/jkozik/k8sChw.com) application.  This application uses the same realtime input, but this repository does not re-create the PV/PVC -- it reuses them.  
 
-Verify that the PV/PVC setup by chwcom exists and is bound.
+## Ingress → HTTPRoute migration
 
-```
-[jkozik@dell2 k8sChw.net]$ kubectl get pv,pvc | grep chwcom
-persistentvolume/chwcom-persistent-storage      1Gi        ROX            Retain           Bound    default/chwcom-persistent-storage      nfs                     17h
-persistentvolumeclaim/chwcom-persistent-storage      Bound    chwcom-persistent-storage      1Gi        ROX            nfs            17h
-```
-# Clone github repository, apply yaml files
-
-Get the yaml manifest files and apply them.  Verify that the pod, deployment, service and ingress are successfully running.
-```
-[jkozik@dell2 ~]$ git clone https://github.com/jkozik/k8sChw.net
-Cloning into 'k8sChw.net'...
-remote: Enumerating objects: 11, done.
-remote: Counting objects: 100% (11/11), done.
-remote: Compressing objects: 100% (9/9), done.
-remote: Total 11 (delta 0), reused 5 (delta 0), pack-reused 0
-Unpacking objects: 100% (11/11), done.
-
-[jkozik@dell2 ~]$ cd k8sChw.net
-[jkozik@dell2 k8sChw.net]$ ls
-chwnet-deploy.yml  chwnet-ingress.yml  chwnet-svc.yml  README.md
-
-[jkozik@dell2 k8sChw.net]$ kubectl apply -f .
-deployment.apps/chwnet created
-ingress.networking.k8s.io/chwnet-ingress created
-service/chwnet created
-```
-# Verify that pod, service, deployment and ingress resources running
-```
-[jkozik@dell2 k8sChw.net]$ kubectl get pods,service,deployment,ingress | grep chwnet
-pod/chwnet-6cc668bd7f-whb84                1/1     Running   0          116s
-service/chwnet            NodePort    10.106.47.241    <none>        80:32070/TCP   115s
-deployment.apps/chwnet                1/1     1            1           116s
-ingress.networking.k8s.io/chwnet-ingress            <none>   camptonhillsweather.net   192.168.100.174   80      116s
-
-[jkozik@dell2 k8sChw.net]$ kubectl logs pod/chwnet-6cc668bd7f-whb84
-AH00558: apache2: Could not reliably determine the server's fully qualified domain name, using 10.68.77.148. Set the 'ServerName' directive globally to suppress this message
-AH00558: apache2: Could not reliably determine the server's fully qualified domain name, using 10.68.77.148. Set the 'ServerName' directive globally to suppress this message
-[Wed Jul 14 13:32:04.403931 2021] [mpm_prefork:notice] [pid 1] AH00163: Apache/2.4.38 (Debian) PHP/7.2.31 configured -- resuming normal operations
-[Wed Jul 14 13:32:04.403989 2021] [core:notice] [pid 1] AH00094: Command line: 'apache2 -D FOREGROUND'
-10.68.77.136 - - [14/Jul/2021:13:32:10 +0000] "GET /weather34uvsolar.php?_=1626212812259 HTTP/1.1" 200 1761 "http://camptonhillsweather.net/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-10.68.77.136 - - [14/Jul/2021:13:32:10 +0000] "GET /moonphase.php?_=1626212812258 HTTP/1.1" 200 1183 "http://camptonhillsweather.net/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-10.68.77.136 - - [14/Jul/2021:13:32:29 +0000] "GET /barometer.php?_=1626212812260 HTTP/1.1" 200 1004 "http://camptonhillsweather.net/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-10.68.77.136 - - [14/Jul/2021:13:32:52 +0000] "GET / HTTP/1.1" 200 36232 "-" "Zabbix"
-10.68.77.136 - - [14/Jul/2021:13:34:11 +0000] "GET /weather34uvsolar.php?_=1626212812261 HTTP/1.1" 200 1761 "http://camptonhillsweather.net/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-10.68.77.136 - - [14/Jul/2021:13:34:11 +0000] "GET /moonphase.php?_=1626212812262 HTTP/1.1" 200 1183 "http://camptonhillsweather.net/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-```
-# Verify http://camptonhillsweather.net
-Based on the log file, the application is already responding to http GET requests.  Either way, it is useful to verify that camptonhillsweather.net works from a CLI and a browser.
-```
-[jkozik@dell2 k8sChw.net]$ curl camptonhillsweather.net | head
-  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-                                 Dload  Upload   Total   Spent    Left  Speed
-  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <title>Campton Hills, IL USA Smart Home Weather Station</title>
-  <meta content="Smart Home weather station providing current weather conditions for Campton Hills, IL USA" name="description">
-  <meta content="website" property="og:type">
-  <meta content="7 days" name="revisit-after">
-  <meta content="web" name="distribution">
-  <meta content="Campton Hills, IL USA
-100  4142    0  4142    0     0  24775      0 --:--:-- --:--:-- --:--:-- 24951
-```
-
-
-## Ingress --> HttpRoute
-I have installed the Gateway API on this cluster.  It is called ` Gateway running in `envoy-gateway-system` namespace.
-
-The HTTPRoute yaml points camptonhillsweather.net and www.camptonhillsweather.net from my Cloudflare tunnel to port 30458.
-
-Ingress has been depricated.
+Ingress (nginx) has been deprecated on this cluster. Traffic is managed via the Kubernetes
+Gateway API implemented by Envoy Gateway. The old ingress yaml is preserved in `old/` for
+reference only — do not apply it on the new cluster.

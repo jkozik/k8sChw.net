@@ -5,6 +5,7 @@ metadata:
   labels:
     app: chwnet
 spec:
+  replicas: 2  
   selector:
     matchLabels:
       app: chwnet
@@ -15,6 +16,13 @@ spec:
       labels:
         app: chwnet
     spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: chwnet
+            topologyKey: kubernetes.io/hostname      
       containers:
       - image: jkozik/chw.net:v1
         name: chwnet
