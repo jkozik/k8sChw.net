@@ -1,3 +1,5 @@
+> **RETIRED 2026-11-08** — camptonhillsweather.net was shut down. The deployment, service and HTTPRoute were deleted from the cluster; the manifests are kept for reference and can be re-applied to restore the site.
+
 # k8sChw.net
 
 Setup camptonhillsweather.net in a Kubernetes cluster as deployment named chwnet; expose as
